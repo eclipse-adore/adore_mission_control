@@ -23,7 +23,7 @@ MissionControlNode::MissionControlNode() :
   Node( "mission_control" )
 {
   get_first_goal_position();
-  road_map = map::MapLoader::load_from_r2s_file( map_file_location );
+  road_map = map::MapLoader::load_from_file( map_file_location );
 
   create_publishers();
   create_subscribers();
