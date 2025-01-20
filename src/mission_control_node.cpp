@@ -105,8 +105,8 @@ MissionControlNode::get_first_goal_position()
 
   declare_parameter<double>( "goal_position_x", 0.0 );
   declare_parameter<double>( "goal_position_y", 0.0 );
-  declare_parameter( "R2S map file", "" );
-  get_parameter( "R2S map file", map_file_location );
+  declare_parameter( "map file", "" );
+  get_parameter( "map file", map_file_location );
 
   Goal initial_goal;
   initial_goal.label = "goal from launch file";
