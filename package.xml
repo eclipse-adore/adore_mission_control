@@ -11,7 +11,8 @@
   <depend>adore_ros2_msgs</depend>
   <depend>adore_dynamics_conversions</depend>
   <depend>adore_map_conversions</depend>
-  
+  <depend>adore_math_conversions</depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <exec_depend>sensor_msgs</exec_depend>
