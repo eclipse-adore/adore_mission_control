@@ -94,6 +94,6 @@ private:
   std::optional<map::Map>                      road_map             = std::nullopt;
   std::string                                  map_file_location;
 
-  double local_map_size = 500;
+  double local_map_size = 25;
 };
 } // namespace adore
