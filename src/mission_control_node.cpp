@@ -23,7 +23,7 @@ MissionControlNode::MissionControlNode() :
   Node( "mission_control" )
 {
   get_first_goal_position();
-  road_map = map::MapLoader::load_from_r2s_file( map_file_location );
+  road_map = map::MapLoader::load_from_file( map_file_location );
 
   create_publishers();
   create_subscribers();
@@ -101,8 +101,8 @@ MissionControlNode::get_first_goal_position()
 
   declare_parameter<double>( "goal_position_x", 0.0 );
   declare_parameter<double>( "goal_position_y", 0.0 );
-  declare_parameter( "R2S map file", "" );
-  get_parameter( "R2S map file", map_file_location );
+  declare_parameter( "map file", "" );
+  get_parameter( "map file", map_file_location );
 
   Goal initial_goal;
   initial_goal.label = "goal from launch file";
