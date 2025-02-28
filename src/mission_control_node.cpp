@@ -46,11 +46,7 @@ MissionControlNode::update_route()
 {
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
-    double progress = current_route->get_s_at_state( latest_vehicle_state.value() );
-
     current_route->trim_route_up_to_state( latest_vehicle_state.value() );
-
-
     if( current_route->center_lane.empty() || current_route->center_lane.size() < 2 )
     {
       reach_goal();
