@@ -47,7 +47,7 @@ MissionControlNode::update_route()
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
     current_route->trim_route_up_to_state( latest_vehicle_state.value() );
-    if( current_route->center_lane.empty() || current_route->center_lane.size() < 2 )
+    if( current_route->center_lane.empty() || current_route->center_lane.size() < 10 )
     {
       reach_goal();
       current_route = std::nullopt;
@@ -68,8 +68,8 @@ MissionControlNode::reach_goal()
   std_msgs::msg::Bool reached;
   reached.data = true;
   goal_reached_publisher->publish( reached );
-  if( !goals.empty() )
-    goals.pop_front();
+  // if( !goals.empty()  )
+  //   goals.pop_front();
 }
 
 void
@@ -118,7 +118,8 @@ MissionControlNode::timer_callback()
 }
 
 void
-MissionControlNode::publish_goal() // TODO remove this once no more nodes rely on it
+MissionControlNode::publish_goal() // TODO remove this once no more nodes
+                                   // rely on it
 {
   if( goal_publisher->get_subscription_count() > 0 )
   {
