@@ -46,8 +46,7 @@ MissionControlNode::update_route()
 {
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
-    current_route->trim_route_up_to_state( latest_vehicle_state.value() );
-    if( current_route->center_lane.empty() || current_route->center_lane.size() < 10 )
+    if( current_route->get_length() - current_route->get_s( latest_vehicle_state.value() ) < 0.5 )
     {
       reach_goal();
       current_route = std::nullopt;
@@ -55,8 +54,12 @@ MissionControlNode::update_route()
   }
   if( !current_route.has_value() && latest_vehicle_state.has_value() && !goals.empty() )
   {
-    current_route = road_map->get_route( latest_vehicle_state.value(), goals.front() );
-    current_route->trim_route_up_to_state( latest_vehicle_state.value() );
+    if( !road_map )
+      return;
+    std::cerr << "PRE CALC ROUTE" << std::endl;
+    current_route = map::Route( latest_vehicle_state.value(), goals.front(), *road_map );
+    std::cerr << "POST CALC ROUTE" << std::endl;
+
     if( current_route->center_lane.empty() )
       current_route = std::nullopt;
   }
