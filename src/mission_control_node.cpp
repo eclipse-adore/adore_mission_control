@@ -56,9 +56,7 @@ MissionControlNode::update_route()
   {
     if( !road_map )
       return;
-    std::cerr << "PRE CALC ROUTE" << std::endl;
     current_route = map::Route( latest_vehicle_state.value(), goals.front(), *road_map );
-    std::cerr << "POST CALC ROUTE" << std::endl;
 
     if( current_route->center_lane.empty() )
       current_route = std::nullopt;
@@ -127,8 +125,9 @@ MissionControlNode::publish_goal() // TODO remove this once no more nodes
   if( goal_publisher->get_subscription_count() > 0 )
   {
     adore_ros2_msgs::msg::GoalPoint goal_point;
-    goal_point.x_position = goals.front().x;
-    goal_point.y_position = goals.front().y;
+    goal_point.x_position      = goals.front().x;
+    goal_point.y_position      = goals.front().y;
+    goal_point.header.frame_id = "world";
     goal_publisher->publish( goal_point );
     sent_goal_point = true;
   }
