@@ -164,7 +164,9 @@ MissionControlNode::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint&
   keep_moving_goal.x     = msg.x_position;
   keep_moving_goal.y     = msg.y_position;
   sent_goal_point        = false;
+  goals.pop_front();
   goals.push_front( keep_moving_goal );
+  current_route = std::nullopt;
 }
 
 void
