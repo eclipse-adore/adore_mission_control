@@ -19,8 +19,8 @@ using namespace std::chrono_literals;
 namespace adore
 {
 
-MissionControlNode::MissionControlNode() :
-  Node( "mission_control" )
+MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
+  Node( "mission_control", options )
 {
   get_first_goal_position();
   road_map = map::MapLoader::load_from_file( map_file_location );
@@ -93,9 +93,8 @@ MissionControlNode::create_subscribers()
 void
 MissionControlNode::get_first_goal_position()
 {
-  declare_parameter<double>( "local_map_size", 500.0 );
+  declare_parameter<double>( "local_map_size", 50.0 );
   get_parameter( "local_map_size", local_map_size );
-
   declare_parameter<double>( "goal_position_x", 0.0 );
   declare_parameter<double>( "goal_position_y", 0.0 );
   declare_parameter( "map file", "" );
@@ -189,8 +188,11 @@ int
 main( int argc, char* argv[] )
 {
   rclcpp::init( argc, argv );
-  auto node = std::make_shared<adore::MissionControlNode>();
+  auto node = std::make_shared<adore::MissionControlNode>( rclcpp::NodeOptions{} );
   rclcpp::spin( node );
   rclcpp::shutdown();
   return 0;
 }
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE( adore::MissionControlNode )
