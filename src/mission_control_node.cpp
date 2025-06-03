@@ -19,8 +19,8 @@ using namespace std::chrono_literals;
 namespace adore
 {
 
-MissionControlNode::MissionControlNode() :
-  Node( "mission_control" )
+MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
+  Node( "mission_control", options )
 {
   get_first_goal_position();
   road_map = map::MapLoader::load_from_file( map_file_location );
@@ -56,9 +56,7 @@ MissionControlNode::update_route()
   {
     if( !road_map )
       return;
-    std::cerr << "PRE CALC ROUTE" << std::endl;
     current_route = map::Route( latest_vehicle_state.value(), goals.front(), *road_map );
-    std::cerr << "POST CALC ROUTE" << std::endl;
 
     if( current_route->center_lane.empty() )
       current_route = std::nullopt;
@@ -95,9 +93,8 @@ MissionControlNode::create_subscribers()
 void
 MissionControlNode::get_first_goal_position()
 {
-  declare_parameter<double>( "local_map_size", 500.0 );
+  declare_parameter<double>( "local_map_size", 50.0 );
   get_parameter( "local_map_size", local_map_size );
-
   declare_parameter<double>( "goal_position_x", 0.0 );
   declare_parameter<double>( "goal_position_y", 0.0 );
   declare_parameter( "map file", "" );
@@ -127,8 +124,9 @@ MissionControlNode::publish_goal() // TODO remove this once no more nodes
   if( goal_publisher->get_subscription_count() > 0 )
   {
     adore_ros2_msgs::msg::GoalPoint goal_point;
-    goal_point.x_position = goals.front().x;
-    goal_point.y_position = goals.front().y;
+    goal_point.x_position      = goals.front().x;
+    goal_point.y_position      = goals.front().y;
+    goal_point.header.frame_id = "world";
     goal_publisher->publish( goal_point );
     sent_goal_point = true;
   }
@@ -192,8 +190,11 @@ int
 main( int argc, char* argv[] )
 {
   rclcpp::init( argc, argv );
-  auto node = std::make_shared<adore::MissionControlNode>();
+  auto node = std::make_shared<adore::MissionControlNode>( rclcpp::NodeOptions{} );
   rclcpp::spin( node );
   rclcpp::shutdown();
   return 0;
 }
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE( adore::MissionControlNode )
