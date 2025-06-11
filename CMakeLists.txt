@@ -1,17 +1,15 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.21)
+project(mission_control VERSION 0.1.0 LANGUAGES CXX)
 
-get_filename_component(CURRENT_DIR_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
-string(TOLOWER ${CURRENT_DIR_NAME} PROJECT)
-project(${PROJECT})
-
-include($ENV{SOURCE_DIRECTORY}/libraries/adore_libraries.cmake)
-
-include(requirements.cmake)
+# C++20 strict mode
 set(CMAKE_CXX_STANDARD 20)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Ensure the Release build uses -O3 for optimization
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
+# Enable compile commands for tooling support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Optimization and warnings
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   add_compile_options(-O3)
 endif()
@@ -20,32 +18,93 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-add_executable(${PROJECT} 
+# Dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(adore_ros2_msgs REQUIRED)
+find_package(adore_map REQUIRED)
+find_package(adore_math REQUIRED)
+find_package(adore_dynamics REQUIRED)
+find_package(adore_map_conversions REQUIRED)
+find_package(adore_math_conversions REQUIRED)
+find_package(adore_dynamics_conversions REQUIRED)
+
+find_package(tf2_ros REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+
+find_package(OpenDrive REQUIRED) 
+
+# Executable
+add_executable(${PROJECT_NAME}
   src/mission_control_node.cpp
 )
 
-target_include_directories(${PROJECT} PRIVATE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
+target_include_directories(${PROJECT_NAME}
+  PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
-add_all_target_include_directories(${PROJECT})
-add_all_target_link_libraries(${PROJECT})
-
-install(TARGETS
-    ${PROJECT}
-  DESTINATION lib/${PROJECT}
+ament_target_dependencies(${PROJECT_NAME}
+  rclcpp
+  rclcpp_components
+  adore_ros2_msgs
+  adore_map
+  adore_math
+  adore_dynamics
+  adore_map_conversions
+  adore_math_conversions
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  geometry_msgs
+  std_msgs
+  adore_dynamics_conversions
+  OpenDrive
 )
 
-add_library(missioncontrolnode_component SHARED src/mission_control_node.cpp)
-add_all_target_include_directories(missioncontrolnode_component)
-add_all_target_link_libraries(missioncontrolnode_component)
+install(TARGETS ${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Component Library
+add_library(${PROJECT_NAME}_component SHARED src/mission_control_node.cpp)
+
+target_include_directories(${PROJECT_NAME}_component
+  PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(${PROJECT_NAME}_component
+  rclcpp
+  rclcpp_components
+  adore_ros2_msgs
+  adore_map
+  adore_math
+  adore_dynamics
+  adore_map_conversions
+  adore_math_conversions
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  geometry_msgs
+  std_msgs
+  adore_dynamics_conversions
+  OpenDrive
+)
+
 rclcpp_components_register_node(
-  missioncontrolnode_component
+  ${PROJECT_NAME}_component
   PLUGIN "adore::MissionControlNode"
   EXECUTABLE missioncontrolnode
 )
-install(TARGETS missioncontrolnode_component
+
+install(TARGETS ${PROJECT_NAME}_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
