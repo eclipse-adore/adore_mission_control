@@ -40,7 +40,7 @@ class MissionControlNode : public rclcpp::Node
 {
 public:
 
-    MissionControlNode(const rclcpp::NodeOptions & options);
+  MissionControlNode( const rclcpp::NodeOptions& options );
 
 private:
 
