@@ -112,9 +112,9 @@ MissionControlNode::timer_callback()
 {
   sent_goal_point = false;
   publish_goal();
-  publish_local_map();
   update_route();
-  send_route_message();
+
+  publish_local_map();
 }
 
 void
@@ -133,25 +133,25 @@ MissionControlNode::publish_goal() // TODO remove this once no more nodes
 }
 
 void
-MissionControlNode::send_route_message()
-{
-  if( current_route.has_value() )
-    route_publisher->publish( map::conversions::to_ros_msg( *current_route ) );
-  else
-  {
-    // send empty route anyway
-    adore_ros2_msgs::msg::Route empty;
-    route_publisher->publish( empty );
-  }
-}
-
-void
 MissionControlNode::publish_local_map()
 {
   if( !road_map.has_value() || !latest_vehicle_state.has_value() )
     return;
   auto local_map = road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size );
   local_map_publisher->publish( map::conversions::to_ros_msg( local_map ) );
+
+  if( current_route.has_value() )
+  {
+    auto local_route = current_route;
+    local_route->map = std::make_shared<map::Map>( local_map );
+    route_publisher->publish( map::conversions::to_ros_msg( *local_route ) );
+  }
+  else
+  {
+    // send empty route anyway
+    adore_ros2_msgs::msg::Route empty;
+    route_publisher->publish( empty );
+  }
 }
 
 void

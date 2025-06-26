@@ -60,7 +60,6 @@ private:
   void timer_callback();
 
   void publish_goal();
-  void send_route_message();
   void publish_road_visualization();
   void get_first_goal_position();
 
