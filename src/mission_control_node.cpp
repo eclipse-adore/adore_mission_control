@@ -23,7 +23,7 @@ MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
   Node( "mission_control", options )
 {
   get_first_goal_position();
-  road_map = map::MapLoader::load_from_file( map_file_location );
+  road_map = std::make_shared<map::Map>( map::MapLoader::load_from_file( map_file_location ) );
 
   create_publishers();
   create_subscribers();
@@ -39,6 +39,8 @@ MissionControlNode::create_publishers()
   local_map_publisher = create_publisher<adore_ros2_msgs::msg::Map>( "local_map", 10 );
 
   goal_reached_publisher = create_publisher<std_msgs::msg::Bool>( "goal_reached", 10 );
+
+  publisher_caution_zones = create_publisher<adore_ros2_msgs::msg::CautionZone>( "caution_zones", 10 );
 }
 
 void
@@ -56,7 +58,7 @@ MissionControlNode::update_route()
   {
     if( !road_map )
       return;
-    current_route = map::Route( latest_vehicle_state.value(), goals.front(), *road_map );
+    current_route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
 
     if( current_route->center_lane.empty() )
       current_route = std::nullopt;
@@ -105,6 +107,25 @@ MissionControlNode::get_first_goal_position()
   get_parameter( "goal_position_x", initial_goal.x );
   get_parameter( "goal_position_y", initial_goal.y );
   goals.push_back( initial_goal );
+
+  std::vector<double> ra_polygon_values; // request assistance polygon
+  declare_parameter( "request_assistance_polygon", std::vector<double>{} );
+  get_parameter( "request_assistance_polygon", ra_polygon_values );
+
+  // Convert the parameter into a Polygon2d
+  if( ra_polygon_values.size() >= 6 ) // minimum 3 x, 3 y
+  {
+    adore::math::Polygon2d polygon;
+    polygon.points.reserve( ra_polygon_values.size() / 2 );
+
+    for( size_t i = 0; i < ra_polygon_values.size(); i += 2 )
+    {
+      double x = ra_polygon_values[i];
+      double y = ra_polygon_values[i + 1];
+      polygon.points.push_back( { x, y } );
+    }
+    caution_zones["Request Assistance"] = polygon;
+  }
 }
 
 void
@@ -115,6 +136,7 @@ MissionControlNode::timer_callback()
   update_route();
 
   publish_local_map();
+  publish_caution_zones();
 }
 
 void
@@ -135,7 +157,7 @@ MissionControlNode::publish_goal() // TODO remove this once no more nodes
 void
 MissionControlNode::publish_local_map()
 {
-  if( !road_map.has_value() || !latest_vehicle_state.has_value() )
+  if( !road_map || !latest_vehicle_state.has_value() )
     return;
   auto local_map = road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size );
   local_map_publisher->publish( map::conversions::to_ros_msg( local_map ) );
@@ -182,6 +204,19 @@ void
 MissionControlNode::vehicle_state_callback( const adore_ros2_msgs::msg::VehicleStateDynamic& msg )
 {
   latest_vehicle_state = dynamics::conversions::to_cpp_type( msg );
+}
+
+void
+MissionControlNode::publish_caution_zones()
+{
+  for( const auto& [label, polygon] : caution_zones )
+  {
+    adore_ros2_msgs::msg::CautionZone caution_zone_msg;
+    caution_zone_msg.label           = label;
+    caution_zone_msg.polygon         = math::conversions::to_ros_msg( polygon );
+    caution_zone_msg.header.frame_id = "world";
+    publisher_caution_zones->publish( caution_zone_msg );
+  }
 }
 
 } // namespace adore

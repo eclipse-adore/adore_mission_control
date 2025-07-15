@@ -21,6 +21,7 @@
 #include "adore_map/map_loader.hpp"
 #include "adore_map/tile_map.hpp"
 #include "adore_map_conversions.hpp"
+#include "adore_ros2_msgs/msg/caution_zone.hpp"
 #include "adore_ros2_msgs/msg/goal_point.hpp"
 #include "adore_ros2_msgs/msg/map.hpp"
 #include "adore_ros2_msgs/msg/route.hpp"
@@ -70,15 +71,17 @@ private:
   void create_publishers();
   void publish_local_map();
   void update_route();
+  void publish_caution_zones();
 
   void reach_goal();
 
   std::optional<map::Route> current_route;
 
-  rclcpp::Publisher<adore_ros2_msgs::msg::Route>::SharedPtr     route_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::GoalPoint>::SharedPtr goal_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::Map>::SharedPtr       local_map_publisher;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr             goal_reached_publisher;
+  rclcpp::Publisher<adore_ros2_msgs::msg::Route>::SharedPtr       route_publisher;
+  rclcpp::Publisher<adore_ros2_msgs::msg::GoalPoint>::SharedPtr   goal_publisher;
+  rclcpp::Publisher<adore_ros2_msgs::msg::Map>::SharedPtr         local_map_publisher;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr               goal_reached_publisher;
+  rclcpp::Publisher<adore_ros2_msgs::msg::CautionZone>::SharedPtr publisher_caution_zones;
 
 
   rclcpp::Subscription<adore_ros2_msgs::msg::GoalPoint>::SharedPtr           keep_moving_subscriber;
@@ -89,9 +92,12 @@ private:
   std::deque<Goal> goals;
   bool             sent_goal_point = false;
 
+  std::unordered_map<std::string, math::Polygon2d> caution_zones;
+
   std::optional<dynamics::VehicleStateDynamic> latest_vehicle_state = std::nullopt;
-  std::optional<map::Map>                      road_map             = std::nullopt;
+  std::shared_ptr<map::Map>                    road_map             = nullptr;
   std::string                                  map_file_location;
+
 
   double local_map_size = 25;
 };
