@@ -22,7 +22,7 @@ namespace adore
 MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
   Node( "mission_control", options )
 {
-  get_first_goal_position();
+  load_parameters();
   road_map = std::make_shared<map::Map>( map::MapLoader::load_from_file( map_file_location ) );
   create_publishers();
   create_subscribers();
