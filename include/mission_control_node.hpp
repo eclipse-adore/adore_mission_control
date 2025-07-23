@@ -16,10 +16,12 @@
 #include <deque>
 #include <optional>
 
+#include "adore_dynamics_adapters.hpp"
 #include "adore_dynamics_conversions.hpp"
 #include "adore_map/map.hpp"
 #include "adore_map/map_loader.hpp"
 #include "adore_map/tile_map.hpp"
+#include "adore_map_adapters.hpp"
 #include "adore_map_conversions.hpp"
 #include "adore_ros2_msgs/msg/caution_zone.hpp"
 #include "adore_ros2_msgs/msg/goal_point.hpp"
@@ -31,7 +33,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
-
 
 using namespace std::chrono_literals;
 
@@ -59,14 +60,10 @@ private:
   };
 
   void timer_callback();
-
-  void publish_goal();
-  void publish_road_visualization();
-  void get_first_goal_position();
-
+  void load_parameters();
   void clicked_point_callback( const geometry_msgs::msg::PointStamped& msg );
   void keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg );
-  void vehicle_state_callback( const adore_ros2_msgs::msg::VehicleStateDynamic& msg );
+  void vehicle_state_callback( const dynamics::VehicleStateDynamic& msg );
   void create_subscribers();
   void create_publishers();
   void publish_local_map();
@@ -77,17 +74,16 @@ private:
 
   std::optional<map::Route> current_route;
 
-  rclcpp::Publisher<adore_ros2_msgs::msg::Route>::SharedPtr       route_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::GoalPoint>::SharedPtr   goal_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::Map>::SharedPtr         local_map_publisher;
+  rclcpp::Publisher<RouteAdapter>::SharedPtr                      route_publisher;
+  rclcpp::Publisher<MapAdapter>::SharedPtr                        local_map_publisher;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr               goal_reached_publisher;
   rclcpp::Publisher<adore_ros2_msgs::msg::CautionZone>::SharedPtr publisher_caution_zones;
 
 
-  rclcpp::Subscription<adore_ros2_msgs::msg::GoalPoint>::SharedPtr           keep_moving_subscriber;
-  rclcpp::Subscription<adore_ros2_msgs::msg::VehicleStateDynamic>::SharedPtr vehicle_state_subscriber;
-  rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr          clicked_point_subscriber;
-  rclcpp::TimerBase::SharedPtr                                               main_timer;
+  rclcpp::Subscription<adore_ros2_msgs::msg::GoalPoint>::SharedPtr  keep_moving_subscriber;
+  rclcpp::Subscription<StateAdapter>::SharedPtr                     vehicle_state_subscriber;
+  rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr clicked_point_subscriber;
+  rclcpp::TimerBase::SharedPtr                                      main_timer;
 
   std::deque<Goal> goals;
   bool             sent_goal_point = false;
@@ -99,6 +95,6 @@ private:
   std::string                                  map_file_location;
 
 
-  double local_map_size = 25;
+  double local_map_size = 50;
 };
 } // namespace adore
