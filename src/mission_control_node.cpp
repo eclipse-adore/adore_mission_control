@@ -13,7 +13,9 @@
  ********************************************************************************/
 #include "mission_control_node.hpp"
 
+#include <string>
 #include <type_traits>
+#include <adore_map/lat_long_conversions.hpp>
 using namespace std::chrono_literals;
 
 namespace adore
@@ -104,6 +106,23 @@ MissionControlNode::get_first_goal_position()
   initial_goal.label = "goal from launch file";
   get_parameter( "goal_position_x", initial_goal.x );
   get_parameter( "goal_position_y", initial_goal.y );
+
+  std::cerr << "Value 1: " << initial_goal.x << ", value 2: " << initial_goal.y << std::endl;
+
+  std::optional<std::vector<double>> initial_goal_utm = map::convert_lat_lon_to_utm(initial_goal.x, initial_goal.y);
+
+  if ( initial_goal_utm.has_value() )
+  {
+    initial_goal.x = initial_goal_utm.value()[0];
+    initial_goal.y = initial_goal_utm.value()[1];
+    initial_goal.zone = "UTM" + std::to_string( static_cast<int>(initial_goal_utm.value()[2]) ) + char( initial_goal_utm.value()[3] );
+  }
+  else
+  {
+    std::cerr << "Failed to convert to utm" << std::endl;
+  }
+  
+
   goals.push_back( initial_goal );
 }
 
@@ -126,7 +145,7 @@ MissionControlNode::publish_goal() // TODO remove this once no more nodes
     adore_ros2_msgs::msg::GoalPoint goal_point;
     goal_point.x_position      = goals.front().x;
     goal_point.y_position      = goals.front().y;
-    goal_point.header.frame_id = "world";
+    goal_point.header.frame_id = goals.front().zone;
     goal_publisher->publish( goal_point );
     sent_goal_point = true;
   }

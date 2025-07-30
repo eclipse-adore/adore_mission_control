@@ -30,7 +30,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
-
+#include "adore_map/lat_long_conversions.hpp"
 
 using namespace std::chrono_literals;
 
@@ -53,6 +53,7 @@ private:
   struct Goal
   {
     double      x, y;
+    std::string zone;
     std::string label;
     GoalType    type;
   };
