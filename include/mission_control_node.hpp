@@ -40,7 +40,7 @@ class MissionControlNode : public rclcpp::Node
 {
 public:
 
-    MissionControlNode(const rclcpp::NodeOptions & options);
+  MissionControlNode( const rclcpp::NodeOptions& options );
 
 private:
 
@@ -94,6 +94,7 @@ private:
   std::optional<map::Map>                      road_map             = std::nullopt;
   std::string                                  map_file_location;
 
-  double local_map_size = 25;
+  double local_map_size      = 25;  // [m]
+  double max_dist_from_route = 5.0; // [m]
 };
 } // namespace adore

@@ -33,11 +33,8 @@ void
 MissionControlNode::create_publishers()
 {
   goal_publisher = create_publisher<adore_ros2_msgs::msg::GoalPoint>( "mission/goal_position", 10 );
-
   route_publisher = create_publisher<adore_ros2_msgs::msg::Route>( "route", 10 );
-
   local_map_publisher = create_publisher<adore_ros2_msgs::msg::Map>( "local_map", 10 );
-
   goal_reached_publisher = create_publisher<std_msgs::msg::Bool>( "goal_reached", 10 );
 }
 
@@ -46,7 +43,15 @@ MissionControlNode::update_route()
 {
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
-    if( current_route->get_length() - current_route->get_s( latest_vehicle_state.value() ) < 0.5 )
+    double current_s     = current_route->get_s( latest_vehicle_state.value() );
+    auto   pose_at_s     = current_route->get_pose_at_s( current_s );
+    double dist_to_route = math::distance_2d( latest_vehicle_state.value(), pose_at_s );
+    if( dist_to_route > max_dist_from_route )
+    {
+      RCLCPP_WARN( get_logger(), "Vehicle is too far from the route, resetting current route." );
+      current_route = std::nullopt;
+    }
+    if( current_route->get_length() - current_s < 0.5 )
     {
       reach_goal();
       current_route = std::nullopt;
@@ -69,8 +74,8 @@ MissionControlNode::reach_goal()
   std_msgs::msg::Bool reached;
   reached.data = true;
   goal_reached_publisher->publish( reached );
-  // if( !goals.empty()  )
-  //   goals.pop_front();
+  if( !goals.empty()  )
+     goals.pop_front();
 }
 
 void
@@ -93,17 +98,14 @@ MissionControlNode::create_subscribers()
 void
 MissionControlNode::get_first_goal_position()
 {
-  declare_parameter<double>( "local_map_size", 50.0 );
-  get_parameter( "local_map_size", local_map_size );
-  declare_parameter<double>( "goal_position_x", 0.0 );
-  declare_parameter<double>( "goal_position_y", 0.0 );
-  declare_parameter( "map file", "" );
-  get_parameter( "map file", map_file_location );
+  local_map_size      = declare_parameter<double>( "local_map_size", 50.0 );
+  map_file_location   = declare_parameter<std::string>( "map file", "" );
+  max_dist_from_route = declare_parameter<double>( "max_dist_from_route", 5.0 );
 
   Goal initial_goal;
+  initial_goal.x     = declare_parameter<double>( "goal_position_x", 0.0 );
+  initial_goal.y     = declare_parameter<double>( "goal_position_y", 0.0 );
   initial_goal.label = "goal from launch file";
-  get_parameter( "goal_position_x", initial_goal.x );
-  get_parameter( "goal_position_y", initial_goal.y );
   goals.push_back( initial_goal );
 }
 
