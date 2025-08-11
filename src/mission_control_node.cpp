@@ -71,7 +71,7 @@ MissionControlNode::create_subscribers()
                                                                                  std::bind( &MissionControlNode::keep_moving_callback, this,
                                                                                             std::placeholders::_1 ) );
 
-  vehicle_state_subscriber = create_subscription<StateAdapter>( "vehicle_state/dynamic", 10,
+  vehicle_state_subscriber = create_subscription<StateAdapter>( "vehicle_state_dynamic", 10,
                                                                 std::bind( &MissionControlNode::vehicle_state_callback, this,
                                                                            std::placeholders::_1 ) );
 
