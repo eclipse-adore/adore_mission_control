@@ -72,7 +72,8 @@ private:
 
   void reach_goal();
 
-  std::optional<map::Route> current_route;
+  std::optional<map::Route> current_route = std::nullopt;
+
 
   rclcpp::Publisher<RouteAdapter>::SharedPtr                      route_publisher;
   rclcpp::Publisher<MapAdapter>::SharedPtr                        local_map_publisher;
