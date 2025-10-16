@@ -27,7 +27,6 @@ find_package(adore_map REQUIRED)
 find_package(adore_math REQUIRED)
 find_package(adore_dynamics REQUIRED)
 find_package(adore_map_conversions REQUIRED)
-find_package(adore_math_conversions REQUIRED)
 find_package(adore_dynamics_conversions REQUIRED)
 
 find_package(tf2_ros REQUIRED)
@@ -36,7 +35,6 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-find_package(OpenDrive REQUIRED) 
 
 # Executable
 add_executable(${PROJECT_NAME}
@@ -57,14 +55,12 @@ ament_target_dependencies(${PROJECT_NAME}
   adore_math
   adore_dynamics
   adore_map_conversions
-  adore_math_conversions
   tf2
   tf2_ros
   tf2_geometry_msgs
   geometry_msgs
   std_msgs
   adore_dynamics_conversions
-  OpenDrive
 )
 
 install(TARGETS ${PROJECT_NAME}
@@ -88,14 +84,12 @@ ament_target_dependencies(${PROJECT_NAME}_component
   adore_math
   adore_dynamics
   adore_map_conversions
-  adore_math_conversions
   tf2
   tf2_ros
   tf2_geometry_msgs
   geometry_msgs
   std_msgs
   adore_dynamics_conversions
-  OpenDrive
 )
 
 rclcpp_components_register_node(

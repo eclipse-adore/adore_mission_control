@@ -12,9 +12,8 @@
   <depend>adore_ros2_msgs</depend>
   <depend>adore_dynamics_conversions</depend>
   <depend>adore_map_conversions</depend>
-  <depend>adore_math_conversions</depend>
   <depend>adore_map</depend>
-  <depend>libOpenDrive</depend>
+  <depend>adore_math</depend>
 
 
   <test_depend>ament_lint_auto</test_depend>
