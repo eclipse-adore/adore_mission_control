@@ -87,7 +87,6 @@ private:
   rclcpp::TimerBase::SharedPtr                                      main_timer;
 
   std::deque<Goal> goals;
-  bool             sent_goal_point = false;
 
   std::unordered_map<std::string, math::Polygon2d> caution_zones;
 

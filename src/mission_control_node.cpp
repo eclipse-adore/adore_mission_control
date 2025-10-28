@@ -118,7 +118,6 @@ MissionControlNode::load_parameters()
 void
 MissionControlNode::timer_callback()
 {
-  sent_goal_point = false;
   update_route();
   publish_local_map();
   publish_caution_zones();
@@ -129,13 +128,14 @@ MissionControlNode::publish_local_map()
 {
   if( !road_map || !latest_vehicle_state.has_value() )
     return;
-  auto local_map = road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size );
-  local_map_publisher->publish( local_map );
+
+  auto local_map_ptr = std::make_shared<map::Map>( road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size ) );
+  local_map_publisher->publish( *local_map_ptr );
 
   if( current_route.has_value() )
   {
-    auto local_route = current_route;
-    local_route->map = std::make_shared<map::Map>( local_map );
+    auto local_route = current_route; // copy your optional (as you do now)
+    local_route->map = local_map_ptr; // share, don’t copy
     route_publisher->publish( *local_route );
   }
   else
@@ -153,7 +153,6 @@ MissionControlNode::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint&
   keep_moving_goal.label = "keep moving goal";
   keep_moving_goal.x     = msg.x_position;
   keep_moving_goal.y     = msg.y_position;
-  sent_goal_point        = false;
   if( !goals.empty() )
     goals.front() = keep_moving_goal;
   else
@@ -169,7 +168,6 @@ MissionControlNode::clicked_point_callback( const geometry_msgs::msg::PointStamp
   keep_moving_goal.label = "custom set goal";
   keep_moving_goal.x     = msg.point.x;
   keep_moving_goal.y     = msg.point.y;
-  sent_goal_point        = false;
   goals.push_front( keep_moving_goal );
 }
 
