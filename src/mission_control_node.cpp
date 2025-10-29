@@ -22,9 +22,8 @@ namespace adore
 MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
   Node( "mission_control", options )
 {
-  get_first_goal_position();
-  road_map = map::MapLoader::load_from_file( map_file_location );
-
+  load_parameters();
+  road_map = std::make_shared<map::Map>( map::MapLoader::load_from_file( map_file_location ) );
   create_publishers();
   create_subscribers();
 }
@@ -32,13 +31,10 @@ MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
 void
 MissionControlNode::create_publishers()
 {
-  goal_publisher = create_publisher<adore_ros2_msgs::msg::GoalPoint>( "mission/goal_position", 10 );
-
-  route_publisher = create_publisher<adore_ros2_msgs::msg::Route>( "route", 10 );
-
-  local_map_publisher = create_publisher<adore_ros2_msgs::msg::Map>( "local_map", 10 );
-
-  goal_reached_publisher = create_publisher<std_msgs::msg::Bool>( "goal_reached", 10 );
+  route_publisher         = create_publisher<RouteAdapter>( "route", 10 );
+  local_map_publisher     = create_publisher<MapAdapter>( "local_map", 10 );
+  goal_reached_publisher  = create_publisher<std_msgs::msg::Bool>( "goal_reached", 10 );
+  publisher_caution_zones = create_publisher<adore_ros2_msgs::msg::CautionZone>( "caution_zones", 10 );
 }
 
 void
@@ -47,19 +43,13 @@ MissionControlNode::update_route()
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
     if( current_route->get_length() - current_route->get_s( latest_vehicle_state.value() ) < 0.5 )
-    {
       reach_goal();
-      current_route = std::nullopt;
-    }
   }
-  if( !current_route.has_value() && latest_vehicle_state.has_value() && !goals.empty() )
+  if( !current_route && latest_vehicle_state && !goals.empty() && road_map )
   {
-    if( !road_map )
-      return;
-    current_route = map::Route( latest_vehicle_state.value(), goals.front(), *road_map );
-
-    if( current_route->center_lane.empty() )
-      current_route = std::nullopt;
+    auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
+    if( !route.center_lane.empty() )
+      current_route = route;
   }
 }
 
@@ -69,8 +59,9 @@ MissionControlNode::reach_goal()
   std_msgs::msg::Bool reached;
   reached.data = true;
   goal_reached_publisher->publish( reached );
-  // if( !goals.empty()  )
-  //   goals.pop_front();
+  if( !goals.empty() )
+    goals.pop_front();
+  current_route = std::nullopt;
 }
 
 void
@@ -80,8 +71,9 @@ MissionControlNode::create_subscribers()
                                                                                  std::bind( &MissionControlNode::keep_moving_callback, this,
                                                                                             std::placeholders::_1 ) );
 
-  vehicle_state_subscriber = create_subscription<adore_ros2_msgs::msg::VehicleStateDynamic>(
-    "vehicle_state/dynamic", 10, std::bind( &MissionControlNode::vehicle_state_callback, this, std::placeholders::_1 ) );
+  vehicle_state_subscriber = create_subscription<StateAdapter>( "vehicle_state_dynamic", 10,
+                                                                std::bind( &MissionControlNode::vehicle_state_callback, this,
+                                                                           std::placeholders::_1 ) );
 
   clicked_point_subscriber = create_subscription<geometry_msgs::msg::PointStamped>( "/clicked_point/goal_position", 10,
                                                                                     std::bind( &MissionControlNode::clicked_point_callback,
@@ -91,67 +83,67 @@ MissionControlNode::create_subscribers()
 }
 
 void
-MissionControlNode::get_first_goal_position()
+MissionControlNode::load_parameters()
 {
-  declare_parameter<double>( "local_map_size", 50.0 );
-  get_parameter( "local_map_size", local_map_size );
-  declare_parameter<double>( "goal_position_x", 0.0 );
-  declare_parameter<double>( "goal_position_y", 0.0 );
-  declare_parameter( "map file", "" );
-  get_parameter( "map file", map_file_location );
-
+  // Load parameters directly
   Goal initial_goal;
+
+  local_map_size     = declare_parameter<double>( "local_map_size", 50.0 );
+  initial_goal.x     = declare_parameter<double>( "goal_position_x", 0.0 );
+  initial_goal.y     = declare_parameter<double>( "goal_position_y", 0.0 );
   initial_goal.label = "goal from launch file";
-  get_parameter( "goal_position_x", initial_goal.x );
-  get_parameter( "goal_position_y", initial_goal.y );
   goals.push_back( initial_goal );
+
+  map_file_location = declare_parameter<std::string>( "map file", "" );
+
+  std::vector<double> ra_polygon_values; // request assistance polygon
+  ra_polygon_values = declare_parameter( "request_assistance_polygon", ra_polygon_values );
+
+  // Convert the parameter into a Polygon2d
+  if( ra_polygon_values.size() >= 6 ) // minimum 3 x, 3 y
+  {
+    adore::math::Polygon2d polygon;
+    polygon.points.reserve( ra_polygon_values.size() / 2 );
+
+    for( size_t i = 0; i < ra_polygon_values.size(); i += 2 )
+    {
+      double x = ra_polygon_values[i];
+      double y = ra_polygon_values[i + 1];
+      polygon.points.push_back( { x, y } );
+    }
+    caution_zones["Request Assistance"] = polygon;
+  }
 }
 
 void
 MissionControlNode::timer_callback()
 {
-  sent_goal_point = false;
-  publish_goal();
-  publish_local_map();
   update_route();
-  send_route_message();
-}
-
-void
-MissionControlNode::publish_goal() // TODO remove this once no more nodes
-                                   // rely on it
-{
-  if( goal_publisher->get_subscription_count() > 0 )
-  {
-    adore_ros2_msgs::msg::GoalPoint goal_point;
-    goal_point.x_position      = goals.front().x;
-    goal_point.y_position      = goals.front().y;
-    goal_point.header.frame_id = "world";
-    goal_publisher->publish( goal_point );
-    sent_goal_point = true;
-  }
-}
-
-void
-MissionControlNode::send_route_message()
-{
-  if( current_route.has_value() )
-    route_publisher->publish( map::conversions::to_ros_msg( *current_route ) );
-  else
-  {
-    // send empty route anyway
-    adore_ros2_msgs::msg::Route empty;
-    route_publisher->publish( empty );
-  }
+  publish_local_map();
+  publish_caution_zones();
 }
 
 void
 MissionControlNode::publish_local_map()
 {
-  if( !road_map.has_value() || !latest_vehicle_state.has_value() )
+  if( !road_map || !latest_vehicle_state.has_value() )
     return;
-  auto local_map = road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size );
-  local_map_publisher->publish( map::conversions::to_ros_msg( local_map ) );
+
+  auto local_map_ptr = std::make_shared<map::Map>( road_map->get_submap( latest_vehicle_state.value(), local_map_size, local_map_size ) );
+  local_map_publisher->publish( *local_map_ptr );
+
+  if( current_route.has_value() )
+  {
+    auto local_route = current_route; // copy your optional (as you do now)
+    local_route->map = local_map_ptr; // share, don’t copy
+    route_publisher->publish( *local_route );
+  }
+  else
+  {
+    // send empty route anyway
+    map::Route empty;
+    route_publisher->publish( empty );
+  }
 }
 
 void
@@ -161,9 +153,11 @@ MissionControlNode::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint&
   keep_moving_goal.label = "keep moving goal";
   keep_moving_goal.x     = msg.x_position;
   keep_moving_goal.y     = msg.y_position;
-  sent_goal_point        = false;
-  goals.pop_front();
-  goals.push_front( keep_moving_goal );
+  if( !goals.empty() )
+    goals.front() = keep_moving_goal;
+  else
+    goals.push_front( keep_moving_goal );
+
   current_route = std::nullopt;
 }
 
@@ -174,14 +168,26 @@ MissionControlNode::clicked_point_callback( const geometry_msgs::msg::PointStamp
   keep_moving_goal.label = "custom set goal";
   keep_moving_goal.x     = msg.point.x;
   keep_moving_goal.y     = msg.point.y;
-  sent_goal_point        = false;
   goals.push_front( keep_moving_goal );
 }
 
 void
-MissionControlNode::vehicle_state_callback( const adore_ros2_msgs::msg::VehicleStateDynamic& msg )
+MissionControlNode::vehicle_state_callback( const dynamics::VehicleStateDynamic& msg )
 {
-  latest_vehicle_state = dynamics::conversions::to_cpp_type( msg );
+  latest_vehicle_state = msg;
+}
+
+void
+MissionControlNode::publish_caution_zones()
+{
+  for( const auto& [label, polygon] : caution_zones )
+  {
+    adore_ros2_msgs::msg::CautionZone caution_zone_msg;
+    caution_zone_msg.label           = label;
+    caution_zone_msg.polygon         = math::conversions::to_ros_msg( polygon );
+    caution_zone_msg.header.frame_id = "world";
+    publisher_caution_zones->publish( caution_zone_msg );
+  }
 }
 
 } // namespace adore

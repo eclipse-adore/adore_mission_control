@@ -16,11 +16,14 @@
 #include <deque>
 #include <optional>
 
+#include "adore_dynamics_adapters.hpp"
 #include "adore_dynamics_conversions.hpp"
 #include "adore_map/map.hpp"
 #include "adore_map/map_loader.hpp"
 #include "adore_map/tile_map.hpp"
+#include "adore_map_adapters.hpp"
 #include "adore_map_conversions.hpp"
+#include "adore_ros2_msgs/msg/caution_zone.hpp"
 #include "adore_ros2_msgs/msg/goal_point.hpp"
 #include "adore_ros2_msgs/msg/map.hpp"
 #include "adore_ros2_msgs/msg/route.hpp"
@@ -31,7 +34,6 @@
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 
-
 using namespace std::chrono_literals;
 
 namespace adore
@@ -40,7 +42,7 @@ class MissionControlNode : public rclcpp::Node
 {
 public:
 
-    MissionControlNode(const rclcpp::NodeOptions & options);
+  MissionControlNode( const rclcpp::NodeOptions& options );
 
 private:
 
@@ -58,42 +60,41 @@ private:
   };
 
   void timer_callback();
-
-  void publish_goal();
-  void send_route_message();
-  void publish_road_visualization();
-  void get_first_goal_position();
-
+  void load_parameters();
   void clicked_point_callback( const geometry_msgs::msg::PointStamped& msg );
   void keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg );
-  void vehicle_state_callback( const adore_ros2_msgs::msg::VehicleStateDynamic& msg );
+  void vehicle_state_callback( const dynamics::VehicleStateDynamic& msg );
   void create_subscribers();
   void create_publishers();
   void publish_local_map();
   void update_route();
+  void publish_caution_zones();
 
   void reach_goal();
 
-  std::optional<map::Route> current_route;
-
-  rclcpp::Publisher<adore_ros2_msgs::msg::Route>::SharedPtr     route_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::GoalPoint>::SharedPtr goal_publisher;
-  rclcpp::Publisher<adore_ros2_msgs::msg::Map>::SharedPtr       local_map_publisher;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr             goal_reached_publisher;
+  std::optional<map::Route> current_route = std::nullopt;
 
 
-  rclcpp::Subscription<adore_ros2_msgs::msg::GoalPoint>::SharedPtr           keep_moving_subscriber;
-  rclcpp::Subscription<adore_ros2_msgs::msg::VehicleStateDynamic>::SharedPtr vehicle_state_subscriber;
-  rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr          clicked_point_subscriber;
-  rclcpp::TimerBase::SharedPtr                                               main_timer;
+  rclcpp::Publisher<RouteAdapter>::SharedPtr                      route_publisher;
+  rclcpp::Publisher<MapAdapter>::SharedPtr                        local_map_publisher;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr               goal_reached_publisher;
+  rclcpp::Publisher<adore_ros2_msgs::msg::CautionZone>::SharedPtr publisher_caution_zones;
+
+
+  rclcpp::Subscription<adore_ros2_msgs::msg::GoalPoint>::SharedPtr  keep_moving_subscriber;
+  rclcpp::Subscription<StateAdapter>::SharedPtr                     vehicle_state_subscriber;
+  rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr clicked_point_subscriber;
+  rclcpp::TimerBase::SharedPtr                                      main_timer;
 
   std::deque<Goal> goals;
-  bool             sent_goal_point = false;
+
+  std::unordered_map<std::string, math::Polygon2d> caution_zones;
 
   std::optional<dynamics::VehicleStateDynamic> latest_vehicle_state = std::nullopt;
-  std::optional<map::Map>                      road_map             = std::nullopt;
+  std::shared_ptr<map::Map>                    road_map             = nullptr;
   std::string                                  map_file_location;
 
-  double local_map_size = 25;
+
+  double local_map_size = 50;
 };
 } // namespace adore
