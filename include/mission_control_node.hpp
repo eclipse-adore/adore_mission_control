@@ -20,7 +20,6 @@
 #include "adore_dynamics_conversions.hpp"
 #include "adore_map/map.hpp"
 #include "adore_map/map_loader.hpp"
-#include "adore_map/tile_map.hpp"
 #include "adore_map_adapters.hpp"
 #include "adore_map_conversions.hpp"
 #include "adore_ros2_msgs/msg/caution_zone.hpp"
