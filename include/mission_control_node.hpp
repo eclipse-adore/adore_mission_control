@@ -94,6 +94,6 @@ private:
   std::string                                  map_file_location;
 
 
-  double local_map_size = 50;
+  double local_map_size = 100;
 };
 } // namespace adore

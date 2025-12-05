@@ -48,7 +48,7 @@ MissionControlNode::update_route()
   if( !current_route && latest_vehicle_state && !goals.empty() && road_map )
   {
     auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
-    if( !route.center_lane.empty() )
+    if( !route.reference_line.empty() )
       current_route = route;
   }
 }
@@ -102,15 +102,7 @@ MissionControlNode::load_parameters()
   // Convert the parameter into a Polygon2d
   if( ra_polygon_values.size() >= 6 ) // minimum 3 x, 3 y
   {
-    adore::math::Polygon2d polygon;
-    polygon.points.reserve( ra_polygon_values.size() / 2 );
-
-    for( size_t i = 0; i < ra_polygon_values.size(); i += 2 )
-    {
-      double x = ra_polygon_values[i];
-      double y = ra_polygon_values[i + 1];
-      polygon.points.push_back( { x, y } );
-    }
+    adore::math::Polygon2d polygon( ra_polygon_values );
     caution_zones["Request Assistance"] = polygon;
   }
 }
