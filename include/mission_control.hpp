@@ -37,11 +37,11 @@ using namespace std::chrono_literals;
 
 namespace adore
 {
-class MissionControlNode : public rclcpp::Node
+class MissionControl : public rclcpp::Node
 {
 public:
 
-  MissionControlNode( const rclcpp::NodeOptions& options );
+  MissionControl( const rclcpp::NodeOptions& options );
 
 private:
 

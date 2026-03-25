@@ -38,7 +38,8 @@ find_package(std_msgs REQUIRED)
 
 # Executable
 add_executable(${PROJECT_NAME}
-  src/mission_control_node.cpp
+  src/main.cpp
+  src/mission_control.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -68,7 +69,7 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 # Component Library
-add_library(${PROJECT_NAME}_component SHARED src/mission_control_node.cpp)
+add_library(${PROJECT_NAME}_component SHARED src/mission_control.cpp)
 
 target_include_directories(${PROJECT_NAME}_component
   PRIVATE
