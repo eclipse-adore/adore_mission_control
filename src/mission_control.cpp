@@ -11,15 +11,16 @@
  * SPDX-License-Identifier: EPL-2.0
  ********************************************************************************/
 
-#include "mission_control_node.hpp"
+#include "mission_control.hpp"
 
+#include <iomanip>
 #include <type_traits>
 using namespace std::chrono_literals;
 
 namespace adore
 {
 
-MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
+MissionControl::MissionControl( const rclcpp::NodeOptions& options ) :
   Node( "mission_control", options )
 {
   load_parameters();
@@ -29,7 +30,7 @@ MissionControlNode::MissionControlNode( const rclcpp::NodeOptions& options ) :
 }
 
 void
-MissionControlNode::create_publishers()
+MissionControl::create_publishers()
 {
   route_publisher         = create_publisher<RouteAdapter>( "route", 10 );
   local_map_publisher     = create_publisher<MapAdapter>( "local_map", 10 );
@@ -38,23 +39,27 @@ MissionControlNode::create_publishers()
 }
 
 void
-MissionControlNode::update_route()
+MissionControl::update_route()
 {
   if( current_route.has_value() && latest_vehicle_state.has_value() )
   {
     if( current_route->get_length() - current_route->get_s( latest_vehicle_state.value() ) < 0.5 )
+    {
       reach_goal();
+    }
   }
   if( !current_route && latest_vehicle_state && !goals.empty() && road_map )
   {
     auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
     if( !route.reference_line.empty() )
+    {
       current_route = route;
+    }
   }
 }
 
 void
-MissionControlNode::reach_goal()
+MissionControl::reach_goal()
 {
   std_msgs::msg::Bool reached;
   reached.data = true;
@@ -65,25 +70,25 @@ MissionControlNode::reach_goal()
 }
 
 void
-MissionControlNode::create_subscribers()
+MissionControl::create_subscribers()
 {
   keep_moving_subscriber = create_subscription<adore_ros2_msgs::msg::GoalPoint>( "mission/goal_request", 10,
-                                                                                 std::bind( &MissionControlNode::keep_moving_callback, this,
+                                                                                 std::bind( &MissionControl::keep_moving_callback, this,
                                                                                             std::placeholders::_1 ) );
 
   vehicle_state_subscriber = create_subscription<StateAdapter>( "vehicle_state_dynamic", 10,
-                                                                std::bind( &MissionControlNode::vehicle_state_callback, this,
+                                                                std::bind( &MissionControl::vehicle_state_callback, this,
                                                                            std::placeholders::_1 ) );
 
   clicked_point_subscriber = create_subscription<geometry_msgs::msg::PointStamped>( "/clicked_point/goal_position", 10,
-                                                                                    std::bind( &MissionControlNode::clicked_point_callback,
+                                                                                    std::bind( &MissionControl::clicked_point_callback,
                                                                                                this, std::placeholders::_1 ) );
 
-  main_timer = create_wall_timer( 100ms, std::bind( &MissionControlNode::timer_callback, this ) );
+  main_timer = create_wall_timer( 100ms, std::bind( &MissionControl::timer_callback, this ) );
 }
 
 void
-MissionControlNode::load_parameters()
+MissionControl::load_parameters()
 {
   // Load parameters directly
   Goal initial_goal;
@@ -92,6 +97,10 @@ MissionControlNode::load_parameters()
   initial_goal.x     = declare_parameter<double>( "goal_position_x", 0.0 );
   initial_goal.y     = declare_parameter<double>( "goal_position_y", 0.0 );
   initial_goal.label = "goal from launch file";
+
+  std::cerr << "Initial goal position : " << std::fixed << std::setprecision(5) << (double)initial_goal.x << " , " << (double)initial_goal.y << std::endl;
+
+  
   goals.push_back( initial_goal );
 
   map_file_location = declare_parameter<std::string>( "map file", "" );
@@ -108,7 +117,7 @@ MissionControlNode::load_parameters()
 }
 
 void
-MissionControlNode::timer_callback()
+MissionControl::timer_callback()
 {
   update_route();
   publish_local_map();
@@ -116,7 +125,7 @@ MissionControlNode::timer_callback()
 }
 
 void
-MissionControlNode::publish_local_map()
+MissionControl::publish_local_map()
 {
   if( !road_map || !latest_vehicle_state.has_value() )
     return;
@@ -139,7 +148,7 @@ MissionControlNode::publish_local_map()
 }
 
 void
-MissionControlNode::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg )
+MissionControl::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg )
 {
   Goal keep_moving_goal;
   keep_moving_goal.label = "keep moving goal";
@@ -154,7 +163,7 @@ MissionControlNode::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint&
 }
 
 void
-MissionControlNode::clicked_point_callback( const geometry_msgs::msg::PointStamped& msg )
+MissionControl::clicked_point_callback( const geometry_msgs::msg::PointStamped& msg )
 {
   Goal keep_moving_goal;
   keep_moving_goal.label = "custom set goal";
@@ -164,13 +173,13 @@ MissionControlNode::clicked_point_callback( const geometry_msgs::msg::PointStamp
 }
 
 void
-MissionControlNode::vehicle_state_callback( const dynamics::VehicleStateDynamic& msg )
+MissionControl::vehicle_state_callback( const dynamics::VehicleStateDynamic& msg )
 {
   latest_vehicle_state = msg;
 }
 
 void
-MissionControlNode::publish_caution_zones()
+MissionControl::publish_caution_zones()
 {
   for( const auto& [label, polygon] : caution_zones )
   {
@@ -184,15 +193,5 @@ MissionControlNode::publish_caution_zones()
 
 } // namespace adore
 
-int
-main( int argc, char* argv[] )
-{
-  rclcpp::init( argc, argv );
-  auto node = std::make_shared<adore::MissionControlNode>( rclcpp::NodeOptions{} );
-  rclcpp::spin( node );
-  rclcpp::shutdown();
-  return 0;
-}
-
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE( adore::MissionControlNode )
+RCLCPP_COMPONENTS_REGISTER_NODE( adore::MissionControl )
