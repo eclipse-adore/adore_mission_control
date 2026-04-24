@@ -14,7 +14,9 @@
 #pragma once
 #include <chrono>
 #include <deque>
+#include <mutex>
 #include <optional>
+#include <thread>
 
 #include "adore_dynamics_adapters.hpp"
 #include "adore_dynamics_conversions.hpp"
@@ -91,6 +93,7 @@ private:
 
   std::optional<dynamics::VehicleStateDynamic> latest_vehicle_state = std::nullopt;
   std::shared_ptr<map::Map>                    road_map             = nullptr;
+  std::mutex                                   map_mutex_;
   std::string                                  map_file_location;
 
 

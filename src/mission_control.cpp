@@ -24,9 +24,15 @@ MissionControl::MissionControl( const rclcpp::NodeOptions& options ) :
   Node( "mission_control", options )
 {
   load_parameters();
-  road_map = std::make_shared<map::Map>( map::MapLoader::load_from_file( map_file_location ) );
   create_publishers();
   create_subscribers();
+  std::thread( [this]() {
+    RCLCPP_INFO( get_logger(), "map load start: %s", map_file_location.c_str() );
+    auto m = std::make_shared<map::Map>( map::MapLoader::load_from_file( map_file_location ) );
+    RCLCPP_INFO( get_logger(), "map load done: %zu lanes", m->lanes.size() );
+    std::lock_guard<std::mutex> lock( map_mutex_ );
+    road_map = std::move( m );
+  } ).detach();
 }
 
 void
@@ -48,6 +54,7 @@ MissionControl::update_route()
       reach_goal();
     }
   }
+  std::lock_guard<std::mutex> lock( map_mutex_ );
   if( !current_route && latest_vehicle_state && !goals.empty() && road_map )
   {
     auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
@@ -127,6 +134,7 @@ MissionControl::timer_callback()
 void
 MissionControl::publish_local_map()
 {
+  std::lock_guard<std::mutex> lock( map_mutex_ );
   if( !road_map || !latest_vehicle_state.has_value() )
     return;
 
