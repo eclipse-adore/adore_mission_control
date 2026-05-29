@@ -32,7 +32,8 @@ MissionControl::MissionControl( const rclcpp::NodeOptions& options ) :
     RCLCPP_INFO( get_logger(), "map load done: %zu lanes", m->lanes.size() );
     std::lock_guard<std::mutex> lock( map_mutex_ );
     road_map = std::move( m );
-  } ).detach();
+  } )
+    .detach();
 }
 
 void
@@ -47,16 +48,60 @@ MissionControl::create_publishers()
 void
 MissionControl::update_route()
 {
-  if( current_route.has_value() && latest_vehicle_state.has_value() )
+  std::lock_guard<std::mutex> lock( map_mutex_ );
+
+  if( !latest_vehicle_state.has_value() || !road_map || goals.empty() )
   {
-    if( current_route->get_length() - current_route->get_s( latest_vehicle_state.value() ) < 0.5 )
+    return;
+  }
+
+  constexpr double PASS_THRESHOLD      = 2.0;  // meters
+  constexpr double LOOKAHEAD_THRESHOLD = 50.0; // meters
+
+  if( !current_route.has_value() )
+  {
+    auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
+
+    if( !route.reference_line.empty() )
+    {
+      current_route = route;
+    }
+
+    return;
+  }
+
+  double remaining_distance = current_route->get_length() - current_route->get_s( latest_vehicle_state.value() );
+
+  if( remaining_distance < PASS_THRESHOLD )
+  {
+    Goal reached_goal = goals.front();
+
+    goals.pop_front();
+
+    if( reached_goal.type == GoalType::STOP )
     {
       reach_goal();
+      return;
     }
+
+    current_route = std::nullopt;
+
+    if( !goals.empty() )
+    {
+      auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
+
+      if( !route.reference_line.empty() )
+      {
+        current_route = route;
+      }
+    }
+
+    return;
   }
-  std::lock_guard<std::mutex> lock( map_mutex_ );
-  if( !current_route && latest_vehicle_state && !goals.empty() && road_map )
+
+  if( goals.size() >= 2 && goals.front().type == GoalType::CONTINUE && remaining_distance < LOOKAHEAD_THRESHOLD )
   {
+    goals.pop_front();
     auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
     if( !route.reference_line.empty() )
     {
@@ -71,8 +116,7 @@ MissionControl::reach_goal()
   std_msgs::msg::Bool reached;
   reached.data = true;
   goal_reached_publisher->publish( reached );
-  if( !goals.empty() )
-    goals.pop_front();
+
   current_route = std::nullopt;
 }
 
@@ -98,17 +142,46 @@ void
 MissionControl::load_parameters()
 {
   // Load parameters directly
-  Goal initial_goal;
+  local_map_size = declare_parameter<double>( "local_map_size", 50.0 );
 
-  local_map_size     = declare_parameter<double>( "local_map_size", 50.0 );
-  initial_goal.x     = declare_parameter<double>( "goal_position_x", 0.0 );
-  initial_goal.y     = declare_parameter<double>( "goal_position_y", 0.0 );
-  initial_goal.label = "goal from launch file";
+  std::vector<std::string> goal_strings = declare_parameter<std::vector<std::string>>( "goals", std::vector<std::string>{} );
 
-  std::cerr << "Initial goal position : " << std::fixed << std::setprecision(5) << (double)initial_goal.x << " , " << (double)initial_goal.y << std::endl;
+  for( const auto& s : goal_strings )
+  {
+    std::stringstream ss( s );
 
-  
-  goals.push_back( initial_goal );
+    std::string x_str;
+    std::string y_str;
+    std::string stop_str;
+
+    if( !std::getline( ss, x_str, ',' ) || !std::getline( ss, y_str, ',' ) )
+    {
+      std::cerr << "Invalid goal format in the launch file" << std::endl;
+      continue;
+    }
+
+    Goal goal;
+
+    goal.x = std::stod( x_str );
+    goal.y = std::stod( y_str );
+
+    // Default values
+    goal.type  = GoalType::CONTINUE;
+    goal.label = "goal from launch file";
+
+    // Optional stop flag
+    if( std::getline( ss, stop_str, ',' ) )
+    {
+      int stop = std::stoi( stop_str );
+
+      if( stop == 1 )
+      {
+        goal.type = GoalType::STOP;
+      }
+    }
+
+    goals.push_back( goal );
+  }
 
   map_file_location = declare_parameter<std::string>( "map file", "" );
 
@@ -162,6 +235,7 @@ MissionControl::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg
   keep_moving_goal.label = "keep moving goal";
   keep_moving_goal.x     = msg.x_position;
   keep_moving_goal.y     = msg.y_position;
+  keep_moving_goal.type  = GoalType::STOP;
   if( !goals.empty() )
     goals.front() = keep_moving_goal;
   else
