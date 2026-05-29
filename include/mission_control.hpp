@@ -49,8 +49,8 @@ private:
 
   enum GoalType
   {
-    PICK_UP,
-    DROP_OFF
+    CONTINUE,
+    STOP
   };
 
   struct Goal
