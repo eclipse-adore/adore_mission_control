@@ -69,14 +69,17 @@ private:
   void create_publishers();
   void publish_local_map();
   void update_route();
+  void update_global_route();
   void publish_caution_zones();
 
   void reach_goal();
 
   std::optional<map::Route> current_route = std::nullopt;
+  std::optional<map::Route> global_route  = std::nullopt;
 
 
-  rclcpp::Publisher<RouteAdapter>::SharedPtr                      route_publisher;
+  rclcpp::Publisher<RouteAdapter>::SharedPtr                      global_route_publisher;
+  rclcpp::Publisher<RouteAdapter>::SharedPtr                      local_route_publisher;
   rclcpp::Publisher<MapAdapter>::SharedPtr                        local_map_publisher;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr               goal_reached_publisher;
   rclcpp::Publisher<adore_ros2_msgs::msg::CautionZone>::SharedPtr publisher_caution_zones;
@@ -88,6 +91,7 @@ private:
   rclcpp::TimerBase::SharedPtr                                      main_timer;
 
   std::deque<Goal> goals;
+  std::deque<Goal> all_goals;
 
   std::unordered_map<std::string, math::Polygon2d> caution_zones;
 
