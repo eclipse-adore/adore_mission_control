@@ -39,10 +39,92 @@ MissionControl::MissionControl( const rclcpp::NodeOptions& options ) :
 void
 MissionControl::create_publishers()
 {
-  route_publisher         = create_publisher<RouteAdapter>( "route", 10 );
+  global_route_publisher  = create_publisher<RouteAdapter>( "global_route", 10 );
+  local_route_publisher   = create_publisher<RouteAdapter>( "route", 10 );
   local_map_publisher     = create_publisher<MapAdapter>( "local_map", 10 );
   goal_reached_publisher  = create_publisher<std_msgs::msg::Bool>( "goal_reached", 10 );
   publisher_caution_zones = create_publisher<adore_ros2_msgs::msg::CautionZone>( "caution_zones", 10 );
+}
+
+void
+MissionControl::update_global_route()
+{
+  if( !latest_vehicle_state.has_value() || !road_map || goals.empty() )
+  {
+    return;
+  }
+
+  if( !global_route.has_value() )
+  {
+    map::Route full_route;
+    map::Route previous_segment;
+
+    bool first_segment = true;
+
+    for( size_t i = 0; i < goals.size(); ++i )
+    {
+      map::Route segment;
+
+      if( i == 0 )
+      {
+        // First segment: vehicle -> first goal
+        segment = map::Route( latest_vehicle_state.value(), goals[i], road_map );
+      }
+      else
+      {
+        // Start from the pose at the end of the previous segment
+        auto pose = previous_segment.get_pose_at_s( previous_segment.get_length() );
+
+        dynamics::VehicleStateDynamic start;
+        start.x         = pose.x;
+        start.y         = pose.y;
+        start.yaw_angle = pose.yaw;
+
+        segment = map::Route( start, goals[i], road_map );
+      }
+
+      if( segment.reference_line.empty() )
+      {
+        std::cerr << "Failed to generate route segment " << i << std::endl;
+        break;
+      }
+
+      if( first_segment )
+      {
+        full_route    = segment;
+        first_segment = false;
+      }
+      else
+      {
+        // Current accumulated route length
+        const double s_offset = full_route.get_length();
+
+        bool skip_first = true;
+
+        for( const auto& [s, point] : segment.reference_line )
+        {
+          // Skip duplicate connection point
+          if( skip_first )
+          {
+            skip_first = false;
+            continue;
+          }
+
+          full_route.reference_line.emplace( s + s_offset, point );
+        }
+
+        // Append route sections
+        full_route.sections.insert( full_route.sections.end(), segment.sections.begin(), segment.sections.end() );
+
+        // Merge lane->section mapping
+        full_route.lane_to_sections.insert( segment.lane_to_sections.begin(), segment.lane_to_sections.end() );
+      }
+
+      // Save for the next iteration
+      previous_segment = std::move( segment );
+    }
+    global_route = full_route;
+  }
 }
 
 void
@@ -56,7 +138,7 @@ MissionControl::update_route()
   }
 
   constexpr double PASS_THRESHOLD      = 2.0;  // meters
-  constexpr double LOOKAHEAD_THRESHOLD = 50.0; // meters
+  constexpr double LOOKAHEAD_THRESHOLD = 80.0; // meters
 
   if( !current_route.has_value() )
   {
@@ -187,6 +269,7 @@ MissionControl::load_parameters()
 
     goals.push_back( goal );
   }
+  all_goals = goals;
 
   map_file_location = declare_parameter<std::string>( "map file", "" );
 
@@ -205,6 +288,7 @@ void
 MissionControl::timer_callback()
 {
   update_route();
+  update_global_route();
   publish_local_map();
   publish_caution_zones();
 }
@@ -223,13 +307,14 @@ MissionControl::publish_local_map()
   {
     auto local_route = current_route; // copy your optional (as you do now)
     local_route->map = local_map_ptr; // share, don’t copy
-    route_publisher->publish( *local_route );
+    local_route_publisher->publish( *local_route );
+    global_route_publisher->publish( *global_route );
   }
   else
   {
     // send empty route anyway
     map::Route empty;
-    route_publisher->publish( empty );
+    local_route_publisher->publish( empty );
   }
 }
 
@@ -247,6 +332,7 @@ MissionControl::keep_moving_callback( const adore_ros2_msgs::msg::GoalPoint& msg
     goals.push_front( keep_moving_goal );
 
   current_route = std::nullopt;
+  global_route  = std::nullopt;
 }
 
 void
