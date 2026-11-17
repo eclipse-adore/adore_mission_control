@@ -13,7 +13,10 @@
 
 #include "mission_control.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
+#include <limits>
 #include <type_traits>
 using namespace std::chrono_literals;
 
@@ -137,7 +140,11 @@ MissionControl::update_route()
     return;
   }
 
-  constexpr double PASS_THRESHOLD      = 2.0;  // meters
+  if( waiting_at_stop )
+  {
+    return;
+  }
+
   constexpr double LOOKAHEAD_THRESHOLD = 80.0; // meters
 
   if( !current_route.has_value() )
@@ -154,7 +161,7 @@ MissionControl::update_route()
 
   double remaining_distance = current_route->get_length() - current_route->get_s( latest_vehicle_state.value() );
 
-  if( remaining_distance < PASS_THRESHOLD )
+  if( remaining_distance < GOAL_PASS_THRESHOLD )
   {
     Goal reached_goal = goals.front();
 
@@ -162,6 +169,12 @@ MissionControl::update_route()
 
     if( reached_goal.type == GoalType::STOP )
     {
+      if( reached_goal.wait_for_resume )
+      {
+        waiting_at_stop = true;
+        RCLCPP_INFO( get_logger(), "Reached '%s'. Waiting until the ride is resumed.", reached_goal.label.c_str() );
+      }
+
       reach_goal();
       return;
     }
@@ -221,6 +234,18 @@ MissionControl::create_subscribers()
 
 
                                                                             
+  stop_at_next_virtual_stop_subscriber = create_subscription<std_msgs::msg::Bool>(
+    "mission/stop_at_next_virtual_stop", 10,
+    std::bind( &MissionControl::stop_at_next_virtual_stop_callback, this, std::placeholders::_1 ) );
+
+  move_forward_subscriber = create_subscription<std_msgs::msg::Float64>( "mission/move_forward", 10,
+                                                                        std::bind( &MissionControl::move_forward_callback, this,
+                                                                                   std::placeholders::_1 ) );
+
+  resume_ride_subscriber = create_subscription<std_msgs::msg::Bool>( "mission/resume_ride", 10,
+                                                                     std::bind( &MissionControl::resume_ride_callback, this,
+                                                                                std::placeholders::_1 ) );
+
   main_timer = create_wall_timer( 100ms, std::bind( &MissionControl::timer_callback, this ) );
 
 }
@@ -270,6 +295,50 @@ MissionControl::load_parameters()
     goals.push_back( goal );
   }
   all_goals = goals;
+
+  std::vector<std::string> virtual_stop_strings = declare_parameter<std::vector<std::string>>( "virtual_stops",
+                                                                                              std::vector<std::string>{} );
+
+  for( const auto& s : virtual_stop_strings )
+  {
+    std::stringstream ss( s );
+
+    std::string x_str;
+    std::string y_str;
+    std::string label;
+
+    if( !std::getline( ss, x_str, ',' ) || !std::getline( ss, y_str, ',' ) )
+    {
+      RCLCPP_WARN( get_logger(), "Invalid virtual stop '%s', expected 'x,y[,label]'", s.c_str() );
+      continue;
+    }
+
+    Goal stop;
+
+    try
+    {
+      stop.x = std::stod( x_str );
+      stop.y = std::stod( y_str );
+    }
+    catch( const std::exception& e )
+    {
+      RCLCPP_WARN( get_logger(), "Invalid virtual stop coordinates in '%s'", s.c_str() );
+      continue;
+    }
+
+    stop.type            = GoalType::STOP;
+    stop.wait_for_resume = true;
+    stop.label           = std::getline( ss, label, ',' ) ? label : "virtual stop";
+
+    virtual_stops.push_back( stop );
+  }
+
+  RCLCPP_INFO( get_logger(), "Loaded %zu virtual stops.", virtual_stops.size() );
+
+  min_stop_distance_vstop         = declare_parameter<double>( "min_stop_distance", min_stop_distance_vstop );
+  max_stop_lateral_offset_vstop   = declare_parameter<double>( "max_stop_lateral_offset", max_stop_lateral_offset_vstop );
+  min_move_forward_distance = declare_parameter<double>( "min_move_forward_distance", min_move_forward_distance );
+  max_move_forward_distance = declare_parameter<double>( "max_move_forward_distance", max_move_forward_distance );
 
   map_file_location = declare_parameter<std::string>( "map file", "" );
 
@@ -418,6 +487,176 @@ MissionControl::drive_back_to_start_callback( const std_msgs::msg::Bool& msg )
     "Received drive back command. Added goal to drive back to start point at (%.2f, %.2f)",
     drive_back_goal.x,
     drive_back_goal.y );
+}
+
+std::optional<map::Route>
+MissionControl::route_from_current_state()
+{
+  if( current_route.has_value() )
+  {
+    return current_route;
+  }
+
+  if( !latest_vehicle_state.has_value() || !road_map || goals.empty() )
+  {
+    return std::nullopt;
+  }
+
+  auto route = map::Route( latest_vehicle_state.value(), goals.front(), road_map );
+
+  if( route.reference_line.empty() )
+  {
+    return std::nullopt;
+  }
+
+  return route;
+}
+
+std::optional<MissionControl::Goal>
+MissionControl::find_next_virtual_stop()
+{
+  if( virtual_stops.empty() )
+  {
+    RCLCPP_WARN( get_logger(), "No virtual stops configured, see the 'virtual_stops' parameter." );
+    return std::nullopt;
+  }
+
+  auto route = route_from_current_state();
+
+  if( !route.has_value() )
+  {
+    RCLCPP_WARN( get_logger(), "Cannot select a virtual stop without a route." );
+    return std::nullopt;
+  }
+
+  const double s_vehicle    = route->get_s( latest_vehicle_state.value() );
+  const double route_length = route->get_length();
+
+  std::optional<Goal> next_stop = std::nullopt;
+  double              next_s    = std::numeric_limits<double>::max();
+
+  for( const auto& stop : virtual_stops )
+  {
+    const double s_stop = route->get_s( stop );
+
+    if( s_stop < s_vehicle + min_stop_distance_vstop || s_stop > route_length )
+    {
+      continue;
+    }
+
+    const auto   point_on_route = route->get_map_point_at_s( s_stop );
+    const double lateral_offset = std::hypot( point_on_route.x - stop.x, point_on_route.y - stop.y );
+
+    if( lateral_offset > max_stop_lateral_offset_vstop )
+    {
+      continue;
+    }
+
+    if( s_stop < next_s )
+    {
+      next_s    = s_stop;
+      next_stop = stop;
+    }
+  }
+
+  if( !next_stop.has_value() )
+  {
+    RCLCPP_WARN( get_logger(), "No virtual stop found ahead on the current route." );
+  }
+
+  return next_stop;
+}
+
+void
+MissionControl::insert_stop_goal( const Goal& stop_goal )
+{
+  goals.push_front( stop_goal );
+
+  current_route   = std::nullopt;
+  global_route    = std::nullopt;
+  waiting_at_stop = false;
+}
+
+void
+MissionControl::stop_at_next_virtual_stop_callback( const std_msgs::msg::Bool& msg )
+{
+  if( !msg.data )
+  {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock( map_mutex_ );
+
+  auto stop = find_next_virtual_stop();
+
+  if( !stop.has_value() )
+  {
+    return;
+  }
+
+  insert_stop_goal( stop.value() );
+
+  RCLCPP_INFO( get_logger(), "Stopping at virtual stop '%s' at (%.2f, %.2f).", stop->label.c_str(), stop->x, stop->y );
+}
+
+void
+MissionControl::move_forward_callback( const std_msgs::msg::Float64& msg )
+{
+  std::lock_guard<std::mutex> lock( map_mutex_ );
+
+  const double distance = std::clamp( msg.data, min_move_forward_distance, max_move_forward_distance );
+
+  if( std::abs( distance - msg.data ) > 1e-6 )
+  {
+    RCLCPP_WARN( get_logger(), "Requested %.2f m, moving %.2f m instead.", msg.data, distance );
+  }
+
+  auto route = route_from_current_state();
+
+  if( !route.has_value() )
+  {
+    RCLCPP_WARN( get_logger(), "Cannot move forward without a route." );
+    return;
+  }
+
+  // Compensate for GOAL_PASS_THRESHOLD
+  const double s_vehicle = route->get_s( latest_vehicle_state.value() );
+  const double s_target  = std::min( s_vehicle + distance + GOAL_PASS_THRESHOLD, route->get_length() );
+  const auto   point     = route->get_map_point_at_s( s_target );
+
+  Goal forward_goal;
+  forward_goal.x               = point.x;
+  forward_goal.y               = point.y;
+  forward_goal.label           = "move forward";
+  forward_goal.type            = GoalType::STOP;
+  forward_goal.wait_for_resume = true;
+
+  insert_stop_goal( forward_goal );
+
+  RCLCPP_INFO( get_logger(), "Moving forward %.2f m to (%.2f, %.2f).", distance, forward_goal.x, forward_goal.y );
+}
+
+void
+MissionControl::resume_ride_callback( const std_msgs::msg::Bool& msg )
+{
+  if( !msg.data )
+  {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock( map_mutex_ );
+
+  if( !waiting_at_stop )
+  {
+    RCLCPP_INFO( get_logger(), "Resume requested, but the vehicle is not waiting at a stop." );
+    return;
+  }
+
+  waiting_at_stop = false;
+  current_route   = std::nullopt;
+  global_route    = std::nullopt;
+
+  RCLCPP_INFO( get_logger(), "Ride resumed." );
 }
 
 } // namespace adore
